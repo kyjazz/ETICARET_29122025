@@ -1,11 +1,10 @@
-﻿using ETICARET.Business.Abstract;
+﻿
+using ETICARET.Business.Abstract;
 using ETICARET.Entities;
 using ETICARET.WebUI.Identity;
-using ETICARET.WebUI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using System.Security.Claims;
 
 namespace ETICARET.WebUI.Controllers
@@ -13,184 +12,121 @@ namespace ETICARET.WebUI.Controllers
     public class CommentController : Controller
     {
         
-        private readonly ICommentService _commentService;
         private readonly IProductService _productService;
+        private readonly ICommentService _commentService;
         private readonly UserManager<ApplicationUser> _userManager;
 
-        public CommentController(ICommentService commentService, IProductService productService, UserManager<ApplicationUser> userManager)
+        public CommentController(IProductService productService, ICommentService commentService, UserManager<ApplicationUser> userManager)
         {
-            _commentService = commentService;
             _productService = productService;
+            _commentService = commentService;
             _userManager = userManager;
         }
 
-        public IActionResult Index(int? productId)
+        [HttpGet]
+        public async Task<IActionResult> ShowProductComments(int id)
         {
-            var comments = productId.HasValue
-                ? _commentService.GetByProductId(productId.Value)
-                : _commentService.GetAll();
+            var product = _productService.GetProductDetail(id);
+            if (product == null)
+            {
+                return NotFound();
+            }
 
-            ViewBag.Products = new SelectList(_productService.GetAll(), "Id", "Name", productId);
-            return View(comments);
+            await PopulateUsernamesAsync(product.Comments);
+            return PartialView("_PartialComments", product.Comments.OrderByDescending(c => c.CreateOn).ToList());
         }
 
         [Authorize]
-        public IActionResult Create(int? productId)
-        {
-            var model = new CommentModel
-            {
-                ProductId = productId ?? 0
-            };
-
-            PopulateProducts(productId);
-            return View(model);
-        }
-
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        [Authorize]
-        public IActionResult Create(CommentModel model)
+        public IActionResult Create(int productId, string text)
         {
-            if (!ModelState.IsValid)
+            
+            if (string.IsNullOrWhiteSpace(text))
             {
-                PopulateProducts(model.ProductId);
-                return View(model);
+                return BadRequest(new { isSuccess = false, message = "Yorum boş olamaz." });
             }
 
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userId))
+            _commentService.Create(new Comment
             {
-                return Challenge();
-            }
-
-            var entity = new Comment
-            {
-                Text = model.Text,
-                ProductId = model.ProductId,
+                ProductId = productId,
+                Text = text.Trim(),
                 UserId = userId,
                 CreateOn = DateTime.Now
-            };
+            });
 
-            _commentService.Create(entity);
-            return RedirectToAction(nameof(Index), new { productId = model.ProductId });
-        }
-
-        public IActionResult Details(int id)
-        {
-            var comment = _commentService.GetById(id);
-            if (comment == null)
-            {
-                return NotFound();
-            }
-
-            return View(comment);
+            return Json(new { isSuccess = true });
         }
 
         [Authorize]
-        public IActionResult Edit(int id)
-        {
-            var comment = _commentService.GetById(id);
-            if (comment == null)
-            {
-                return NotFound();
-            }
-
-            if (!CanManageComment(comment))
-            {
-                return Forbid();
-            }
-
-            PopulateProducts(comment.ProductId);
-
-            var model = new CommentModel
-            {
-                Id = comment.Id,
-                Text = comment.Text,
-                ProductId = comment.ProductId,
-                UserId = comment.UserId
-            };
-
-            return View(model);
-        }
-
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        [Authorize]
-        public IActionResult Edit(CommentModel model)
+        public IActionResult Edit(int id, string text)
         {
-            if (!ModelState.IsValid)
+            if (string.IsNullOrWhiteSpace(text))
             {
-                PopulateProducts(model.ProductId);
-                return View(model);
+                return BadRequest(new { isSuccess = false, message = "Yorum boş olamaz." });
             }
 
-            var comment = _commentService.GetById(model.Id);
+            var comment = _commentService.GetById(id);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
             if (comment == null)
             {
-                return NotFound();
+                return NotFound(new { isSuccess = false, message = "Yorum bulunamadı." });
             }
 
-            if (!CanManageComment(comment))
+            if (comment.UserId != userId)
             {
                 return Forbid();
             }
 
-            comment.Text = model.Text;
-            comment.ProductId = model.ProductId;
+            comment.Text = text.Trim();
             _commentService.Update(comment);
 
-            return RedirectToAction(nameof(Index), new { productId = model.ProductId });
+            return Json(new { isSuccess = true });
         }
 
-        [HttpPost]
-        [ValidateAntiForgeryToken]
         [Authorize]
+        [HttpPost]
         public IActionResult Delete(int id)
         {
             var comment = _commentService.GetById(id);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
             if (comment == null)
             {
-                return NotFound();
+                return NotFound(new { isSuccess = false, message = "Yorum bulunamadı." });
             }
 
-            if (!CanManageComment(comment))
+            if (comment.UserId != userId)
             {
                 return Forbid();
             }
 
-            var productId = comment.ProductId;
             _commentService.Delete(comment);
-            return RedirectToAction(nameof(Index), new { productId });
+
+            return Json(new { isSuccess = true });
         }
 
-        public IActionResult ShowProductComments(int id)
+        private async Task PopulateUsernamesAsync(List<Comment> comments)
         {
-            var comments = _commentService.GetByProductId(id);
-            var usernames = _userManager.Users
-                .Where(x => comments.Select(c => c.UserId).Contains(x.Id))
-                .ToDictionary(x => x.Id, x => x.UserName ?? "Anonim");
+            var usernames = new Dictionary<string, string>();
+
+            foreach (var userId in comments.Select(c => c.UserId).Distinct())
+            {
+                if (string.IsNullOrWhiteSpace(userId))
+                {
+                    continue;
+                }
+
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user != null)
+                {
+                    usernames[userId] = user.UserName;
+                }
+            }
 
             ViewBag.Usernames = usernames;
-            return PartialView("~/Views/Shared/_PartialComments.cshtml", comments);
-        }
-
-        private void PopulateProducts(int? selectedProductId = null)
-        {
-            ViewBag.Products = _productService.GetAll()
-                .Select(x => new SelectListItem
-                {
-                    Text = x.Name,
-                    Value = x.Id.ToString(),
-                    Selected = selectedProductId.HasValue && selectedProductId == x.Id
-                })
-                .ToList();
-        }
-
-        private bool CanManageComment(Comment comment)
-        {
-            
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            return User.IsInRole("admin") || comment.UserId == userId;
         }
     }
 }

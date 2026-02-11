@@ -1,130 +1,130 @@
-﻿(function () {
-    function getCommentPane() {
-        return document.getElementById("comment");
+﻿function imageBox(image) {
+    const imageBoxElement = document.getElementById("image-box");
+    if (!imageBoxElement || !image) {
+        return;
     }
 
-    function getProductId() {
-        var pane = getCommentPane();
-        return pane ? parseInt(pane.dataset.productId || "0", 10) : 0;
+    imageBoxElement.src = image.src;
+}
+
+async function refreshComments() {
+    const commentTab = document.getElementById("comment");
+    if (!commentTab) {
+        return;
     }
 
-    function getCommentUrl() {
-        var pane = getCommentPane();
-        return pane ? pane.dataset.url : null;
+    const url = commentTab.dataset.url;
+    if (!url) {
+        return;
     }
 
-    function refreshComments() {
-        var pane = getCommentPane();
-        var url = getCommentUrl();
-        if (!pane || !url) {
-            return;
+    const response = await fetch(url, {
+        method: "GET",
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
         }
+    });
 
-        fetch(url, {
-            method: "GET",
-            headers: { "X-Requested-With": "XMLHttpRequest" }
-        })
-            .then(function (response) { return response.text(); })
-            .then(function (html) {
-                pane.innerHTML = html;
-            });
+    if (!response.ok) {
+        throw new Error("Yorumlar yenilenemedi.");
     }
 
-    function postJson(url, data) {
-        return fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-Requested-With": "XMLHttpRequest"
-            },
-            body: JSON.stringify(data)
-        }).then(function (response) { return response.json(); });
+    commentTab.innerHTML = await response.text();
+}
+
+async function sendCommentRequest(url, payload) {
+    const formBody = new URLSearchParams();
+    Object.keys(payload).forEach((key) => {
+        formBody.append(key, payload[key]);
+    });
+
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-Requested-With": "XMLHttpRequest"
+        },
+        body: formBody.toString()
+    });
+
+    if (!response.ok) {
+        throw new Error("İşlem başarısız oldu.");
     }
 
-    window.doComment = function (button, mode, commentId, elementSelector) {
-        var productId = getProductId();
+    return response.json();
+}
 
-        if (mode === "new_clicked") {
-            var input = document.getElementById("new_comment_text");
-            var text = input ? input.value.trim() : "";
-            if (!text) {
-                alert("Lütfen yorum metni giriniz.");
+async function doComment(button, action, commentId, selector) {
+    const commentTab = document.getElementById("comment");
+    if (!commentTab) {
+        return;
+    }
+
+    const productId = Number(commentTab.dataset.productId);
+
+    try {
+        if (action === "new_clicked") {
+            const input = document.getElementById("new_comment_text");
+            if (!input || !input.value.trim()) {
+                alert("Lütfen yorum girin.");
                 return;
             }
 
-            postJson("/Comment/Add", { text: text, productId: productId })
-                .then(function (result) {
-                    if (!result.result) {
-                        alert(result.message || "Yorum eklenemedi.");
-                        return;
-                    }
+            await sendCommentRequest("/Comment/Create", {
+                productId,
+                text: input.value.trim()
+            });
 
-                    input.value = "";
-                    refreshComments();
-                });
-
+            input.value = "";
+            await refreshComments();
             return;
         }
 
-        if (mode === "delete_clicked") {
+        if (action === "edit_clicked") {
+            const commentElement = document.querySelector(selector);
+            if (!commentElement) {
+                return;
+            }
+
+            const isEditMode = button.dataset.editMode === "true";
+
+            if (!isEditMode) {
+                commentElement.setAttribute("contenteditable", "true");
+                commentElement.focus();
+                button.dataset.editMode = "true";
+                button.classList.remove("btn-warning");
+                button.classList.add("btn-success");
+                return;
+            }
+
+            const text = commentElement.textContent.trim();
+            if (!text) {
+                alert("Yorum boş olamaz.");
+                return;
+            }
+
+            await sendCommentRequest("/Comment/Edit", {
+                id: commentId,
+                text
+            });
+
+            await refreshComments();
+            return;
+        }
+
+        if (action === "delete_clicked") {
             if (!confirm("Yorumu silmek istediğinize emin misiniz?")) {
                 return;
             }
 
-            postJson("/Comment/Remove", { id: commentId })
-                .then(function (result) {
-                    if (!result.result) {
-                        alert(result.message || "Yorum silinemedi.");
-                        return;
-                    }
+            await sendCommentRequest("/Comment/Delete", {
+                id: commentId
+            });
 
-                    refreshComments();
-                });
-
-            return;
+            await refreshComments();
         }
-
-        if (mode === "edit_clicked") {
-            var textElement = document.querySelector(elementSelector);
-            if (!textElement) {
-                return;
-            }
-
-            var isEditMode = button.dataset.editMode === "true";
-
-            if (!isEditMode) {
-                button.dataset.editMode = "true";
-                button.innerHTML = '<span class="fas fa-save fa-xs"></span>';
-                textElement.contentEditable = "true";
-                textElement.focus();
-                return;
-            }
-
-            var text = textElement.innerText.trim();
-            if (!text) {
-                alert("Yorum metni boş olamaz.");
-                return;
-            }
-
-            postJson("/Comment/Update", { id: commentId, text: text, productId: productId })
-                .then(function (result) {
-                    if (!result.result) {
-                        alert(result.message || "Yorum güncellenemedi.");
-                        return;
-                    }
-
-                    button.dataset.editMode = "false";
-                    button.innerHTML = '<span class="fas fa-edit fa-xs"></span>';
-                    textElement.contentEditable = "false";
-                    refreshComments();
-                });
-        }
-    };
-
-    window.imageBox = function (imgElement) {
-        var imageBoxElement = document.getElementById("image-box");
-        if (imageBoxElement && imgElement) {
-            imageBoxElement.src = imgElement.src;
-        }
-    };
-})();
+    } catch (error) {
+        console.error(error);
+        alert("İşlem sırasında bir hata oluştu.");
+    }
+}
