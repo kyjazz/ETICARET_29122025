@@ -31,6 +31,16 @@ namespace ETICARET.Business.Concrete
             return _commentDal.GetById(id);
         }
 
+        public List<Comment> GetAll()
+        {
+            return _commentDal.GetAll();
+        }
+
+        public List<Comment> GetByProductId(int productId)
+        {
+            return _commentDal.GetAll(x => x.ProductId == productId);
+        }
+
         public void Update(Comment entity)
         {
             _commentDal.Update(entity);

@@ -1,0 +1,37 @@
+﻿@model ETICARET.Entities.Comment
+
+@{
+    ViewData["Title"] = "Yorum Detayı";
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">Yorum Detayı</div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">Id</dt>
+                        <dd class="col-sm-9">@Model.Id</dd>
+
+                        <dt class="col-sm-3">Ürün Id</dt>
+                        <dd class="col-sm-9">@Model.ProductId</dd>
+
+                        <dt class="col-sm-3">Kullanıcı</dt>
+                        <dd class="col-sm-9">@Model.UserId</dd>
+
+                        <dt class="col-sm-3">Yorum</dt>
+                        <dd class="col-sm-9">@Model.Text</dd>
+
+                        <dt class="col-sm-3">Oluşturma</dt>
+                        <dd class="col-sm-9">@Model.CreateOn.ToString("dd.MM.yyyy HH:mm")</dd>
+                    </dl>
+                </div>
+                <div class="card-footer d-flex gap-2">
+                    <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-warning">Düzenle</a>
+                    <a asp-action="Index" asp-route-productId="@Model.ProductId" class="btn btn-secondary">Listeye Dön</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

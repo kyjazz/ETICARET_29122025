@@ -86,7 +86,7 @@ SeedDatabase.Seed();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-app.CustomStaticFiles();
+//app.CustomStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
